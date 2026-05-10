@@ -76,10 +76,10 @@ if __name__=='__main__':
     #env = gym.make('CartPole-v1')
     env = gym.make('Acrobot-v1')
     # env = EnvTest((100,))
-    seed_all(0, env)
+    seed_all(1, env)
 
     # set double to True for Double DQN, False for DQN
-    double = True
+    double = False
     main(env, double)
     csv_plot(config.csv_dir, config.output_path)
 
