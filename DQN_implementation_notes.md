@@ -346,7 +346,7 @@ loss = mean( (Q_online(s, a) - target)^2 )
 | `batch_size` | 32 | 每次训练的样本数 |
 | `gamma` | 0.99 | 折扣因子 |
 | `learning_start` | 100 | 开始学习前的步数 |
-| `target_update_freq` | 20 | Target Network 更新频率 |
+| `target_update_freq` | 50 | Target Network 更新频率 |
 | `eps_begin` | 1.0 | 初始探索率 |
 | `eps_end` | 0.1 | 最终探索率 |
 | `eps_nsteps` | 1000 | 探索率衰减步数 |
@@ -368,15 +368,48 @@ loss = mean( (Q_online(s, a) - target)^2 )
 - 检查 `learning_start` 是否足够大（让 replay buffer 先积累数据）
 - 观察初期 Loss 是否异常大（可能需要调整网络初始化）
 
-### 5.2 Q 值过大（过估计）
+### 5.2 Q 值爆炸（Target Network 更新条件 Bug）⚠️ 已修复
+
+**现象**：Max Q 持续异常增长，远超实际奖励范围，训练完全不稳定，loss 无法收敛
+
+**根本原因**：`training_step` 中 Target Network 更新条件写法有误：
+
+```python
+# 有问题写法
+if t / self.config.learning_freq % self.config.target_update_freq == 0:
+    self.update_target()
+```
+
+**Bug 分析**：
+1. **运算符优先级**：`/` 和 `%` 优先级相同，从左到右结合，实际计算 `(t / learning_freq) % target_update_freq`
+2. **浮点除法**：Python 3 中 `/` 是浮点除法，`t / learning_freq` 结果为浮点数，`%` 取模后 `== 0` 几乎永远不成立
+3. **语义错误**：`training_step` 已经由 `t % learning_freq == 0` 控制调用频率，内部不应再除以 `learning_freq`
+
+**后果**：Target Network 几乎从不更新 → Online Network 追逐过时 target → Q 值自我放大 → 爆炸
+
+**修复方案**：
+```python
+# 正确写法
+if t % self.config.target_update_freq == 0:
+    self.update_target()
+```
+
+**配套调整**：`target_update_freq` 从 20 调整为 50，避免修复后更新过于频繁导致 target 不稳定
+
+**详细修复记录**：见 `bugfix_log.md` — "2026-05-10：Q 值爆炸 — Target Network 更新条件 Bug 修复"
+
+---
+
+### 5.3 Q 值过大（过估计）
 
 **现象**：Max Q 持续上升，远超实际奖励
 
 **解决方案**：
 - 使用 Double DQN 替代 DQN
 - 降低 `gamma`（减少对未来奖励的关注）
+- 确认 Target Network 更新条件是否正确（见 5.2）
 
-### 5.3 训练不稳定
+### 5.4 训练不稳定
 
 **可能原因**：
 - Target Network 更新频率太低

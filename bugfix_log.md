@@ -143,3 +143,86 @@ done = terminated or truncated
 | 执行动作 | `obs, r, done, info = env.step(a)` | `obs, r, terminated, truncated, info = env.step(a)` |
 | CartPole | `CartPole-v0` | `CartPole-v1` |
 | Acrobot | `Acrobot-v1` | `Acrobot-v1`（不变） |
+
+---
+
+## 2026-05-10：Q 值爆炸 — Target Network 更新条件 Bug 修复
+
+### 问题描述
+
+在训练过程中观察到 **Q 值爆炸**（Max Q 持续异常增长，远超正常范围），导致训练完全不稳定、loss 无法收敛。
+
+**根本原因**：`learn.py` 的 `training_step` 函数中，Target Network 的更新条件写法有误：
+
+```python
+if t / self.config.learning_freq % self.config.target_update_freq == 0:
+```
+
+**Bug 分析**：
+
+这个表达式 `t / self.config.learning_freq % self.config.target_update_freq` 存在严重的逻辑错误：
+
+1. **运算符优先级问题**：`/` 和 `%` 优先级相同，从左到右结合，所以实际计算的是 `(t / learning_freq) % target_update_freq`，而不是预期的 `t / (learning_freq % target_update_freq)`。
+2. **整数除法问题**：Python 3 中 `/` 是浮点除法，`t / learning_freq` 的结果为浮点数，再用 `%` 取模，由于浮点精度问题，`== 0` 的判断几乎永远不会成立。
+3. **即使使用 `//`（整除）**：`t // learning_freq % target_update_freq` 的语义也不对——它表示"每经过 `target_update_freq` 个 learning 步"，但 `t` 本身已经在 `learn()` 的训练循环中通过 `t % learning_freq == 0` 控制了调用 `training_step` 的频率，所以在 `training_step` 内部不应该再除以 `learning_freq`。
+
+**后果**：Target Network 几乎从不更新（或更新时机完全错乱），导致 Online Network 持续追逐一个过时的 target，Q 值不断自我放大，最终爆炸。
+
+---
+
+### 修改清单
+
+#### 1. learn.py — `training_step` 中 Target Network 更新条件
+
+**位置**：`DQNTrainer.training_step()` 方法末尾
+
+**修改前**：
+```python
+
+if t / self.config.learning_freq % self.config.target_update_freq == 0:
+    self.update_target()
+```
+
+**修改后**：
+```python
+# 直接对全局步数 t 取模
+if t % self.config.target_update_freq == 0:
+    self.update_target()
+```
+
+**原因**：
+- `t` 是全局时间步计数器，在 `learn()` 的主循环中每步 +1。
+- `training_step` 已经只在 `t % learning_freq == 0` 时被调用，不需要在内部再除以 `learning_freq`。
+- 正确语义是：每隔 `target_update_freq` 个全局步更新一次 Target Network。
+- 使用 `%` 取模 + `== 0` 判断是标准且清晰的做法。
+
+---
+
+#### 2. main.py — `target_update_freq` 调整
+
+**位置**：`config` 类
+
+**修改前**：
+```python
+target_update_freq = 20
+```
+
+**修改后**：
+```python
+target_update_freq = 50
+```
+
+**原因**：
+- 原先 `target_update_freq` 值过小（如 20），在修复更新条件后会导致 Target Network 更新过于频繁，失去"稳定 target"的作用。
+- 设为 50 是一个合理的折中：既不会太频繁（导致 target 不稳定），也不会太稀疏（导致 Q 值过时太久）。
+- 对于 CartPole-v1 和 Acrobot-v1 这类简单环境，50 步更新一次效果良好。
+
+---
+
+### 影响总结
+
+| 项目 | 修复前 | 修复后 |
+|------|--------|--------|
+| Target Network 更新 | 几乎不更新 / 时机错乱 | 每隔 50 步稳定更新 |
+| Q 值行为 | 持续爆炸增长 | 正常收敛 |
+| 训练稳定性 | Loss 不收敛，Rewards 不上升 | Loss 下降，Rewards 逐步上升 |

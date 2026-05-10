@@ -206,15 +206,14 @@ class DQNTrainer(object):
         self.q_optimizer.step()
 
         # ==================== Target Network Update ====================
-        # 最清晰、最常用的写法：
         if t % self.config.target_update_freq == 0:
             self.update_target()
 
-        # 保存模型
+        #
         if t % self.config.saving_freq == 0:
             torch.save(self.q_network.state_dict(), self.config.model_dir)
         return loss.item(), total_param_norm
-
+        ################################################################  :)
 
     def update_target(self):
         '''
@@ -276,26 +275,27 @@ class DQNTrainer(object):
         ##############################################################
         ################ YOUR CODE HERE ##############################
     
-        # 1. 获取当前 Q(s, a)
+        # 1， 获取当前 Q(s, a)
         q_out = self.q_network(state_batch)                    # (batch_size, num_actions)
         
-        # 稳健处理 action_batch 的形状（兼容 1D 和 2D）
+        #处理 action_batch 的形状(1D和3D都可以)，确保它是 (batch_size, 1) 的形状，使得后续的 gather 操作能够正确地索引到对应的动作。
         if action_batch.dim() == 1:
             action_batch = action_batch.unsqueeze(1)           # 变成 (batch_size, 1)
         
-        q_values = q_out.gather(1, action_batch).squeeze(1)   # (batch_size,)
+        q_values = q_out.gather(1, action_batch).squeeze(1)    # (batch_size,)
 
-        # 2. 计算 target
+        # 2， 计算 target
         with torch.no_grad():
             next_q_values = self.target_network(next_state_batch).max(dim=1)[0]  # (batch_size,)
             
             target = (reward_batch.squeeze() + 
                     self.config.gamma * (1.0 - done_batch.float().squeeze()) * next_q_values)
 
-        # 3. Loss
+        # 3， Loss
         loss = nn.MSELoss()(q_values, target)
-        #loss = nn.SmoothL1Loss()(q_values, target)
-        
+        #loss = nn.SmoothL1Loss()(q_values, target) #一开始以为是MSELoss，后来发现论文里是Huber Loss，也就是SmoothL1Loss，后来又改回了MSELoss。
+        #DDQN也是一样的
+
         ##############################################################
         ######################## END YOUR CODE #######################
         return loss
@@ -330,7 +330,7 @@ class DQNTrainer(object):
         ##############################################################
         ##############################################################
     
-        # 1. 当前 Q(s, a)
+        # 1, 当前 Q(s, a)
         q_out = self.q_network(state_batch)
         if action_batch.dim() == 1:
             action_batch = action_batch.unsqueeze(1)
@@ -341,7 +341,7 @@ class DQNTrainer(object):
             # Online 选动作
             next_actions = self.q_network(next_state_batch).argmax(dim=1, keepdim=True)
             
-            # Target 估价值
+            # Target 估value
             target_q_values = self.target_network(next_state_batch).gather(1, next_actions).squeeze(1)
             
             target = (reward_batch.squeeze() + 

@@ -25,7 +25,7 @@ class config():
     replay_buffer_size = 100000
     learning_start = 100
     learning_freq = 1
-    target_update_freq = 50
+    target_update_freq = 50 #其实这里问题应该不大，原本是20，后来改成50了，主要是为了让训练更稳定一些，毕竟CartPole-v1环境比较简单，更新频率太高可能会导致训练不稳定。
     lr_begin = 0.001#0.01
     lr_end = 0.001#0.01
     lr_nsteps = 10000
@@ -68,7 +68,7 @@ def seed_all(seed, env=None):
         torch.cuda.manual_seed_all(seed)
     
     if env is not None:
-        # Gymnasium 方式：通过 reset(seed=seed) 设置环境随机种子
+        # 这里改成新的包Gymnasium，其语法也要变化，即通过 reset(seed=seed) 设置环境随机种子
         env.reset(seed=seed)
 
 
