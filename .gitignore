@@ -1,0 +1,8 @@
+__pycache__/
+tmp/
+results/
+*.pdf
+munchlearn.py
+tutorial-cartpole.py
+.DS_Store
+.idea
