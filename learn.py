@@ -180,6 +180,11 @@ class DQNTrainer(object):
         reward_batch = torch.cat(batch.reward).view(
             self.config.batch_size, -1)
 
+
+        #checkkkkkkkk
+        #print("action_batch shape:", action_batch.shape)
+        #print("q_out shape:", self.q_network(state_batch).shape)
+
         if self.config.double == True:
             loss = self.compute_DoubleDQN_loss(state_batch,
                                                action_batch,
@@ -200,14 +205,14 @@ class DQNTrainer(object):
             group['lr'] = lr
         self.q_optimizer.step()
 
-        # update target network
-        if t / self.config.learning_freq % \
-                self.config.target_update_freq == 0:
+        # ==================== Target Network Update ====================
+        # 最清晰、最常用的写法：
+        if t % self.config.target_update_freq == 0:
             self.update_target()
 
+        # 保存模型
         if t % self.config.saving_freq == 0:
-            torch.save(self.q_network.state_dict(),
-                       self.config.model_dir)
+            torch.save(self.q_network.state_dict(), self.config.model_dir)
         return loss.item(), total_param_norm
 
 
@@ -269,13 +274,28 @@ class DQNTrainer(object):
         '''
         loss = None
         ##############################################################
-        ################ YOUR CODE HERE - 5-6 lines ##################
-        q_values = self.q_network(state_batch).gather(1, action_batch).squeeze()
-        with torch.no_grad():
-            target_q_values = self.target_network(next_state_batch).max(dim=1)[0]
-            target = reward_batch.squeeze() + self.config.gamma * (1 - done_batch.float()) * target_q_values
-        loss = nn.MSELoss()(q_values, target)
+        ################ YOUR CODE HERE ##############################
+    
+        # 1. 获取当前 Q(s, a)
+        q_out = self.q_network(state_batch)                    # (batch_size, num_actions)
+        
+        # 稳健处理 action_batch 的形状（兼容 1D 和 2D）
+        if action_batch.dim() == 1:
+            action_batch = action_batch.unsqueeze(1)           # 变成 (batch_size, 1)
+        
+        q_values = q_out.gather(1, action_batch).squeeze(1)   # (batch_size,)
 
+        # 2. 计算 target
+        with torch.no_grad():
+            next_q_values = self.target_network(next_state_batch).max(dim=1)[0]  # (batch_size,)
+            
+            target = (reward_batch.squeeze() + 
+                    self.config.gamma * (1.0 - done_batch.float().squeeze()) * next_q_values)
+
+        # 3. Loss
+        loss = nn.MSELoss()(q_values, target)
+        #loss = nn.SmoothL1Loss()(q_values, target)
+        
         ##############################################################
         ######################## END YOUR CODE #######################
         return loss
@@ -308,14 +328,27 @@ class DQNTrainer(object):
         '''
         loss = None
         ##############################################################
-        ############### YOUR CODE HERE - 8-10 lines ##################
-        q_values = self.q_network(state_batch).gather(1, action_batch).squeeze()
-        with torch.no_grad():
-            next_actions = self.q_network(next_state_batch).argmax(dim=1, keepdim=True)
-            target_q_values = self.target_network(next_state_batch).gather(1, next_actions).squeeze()
-            target = reward_batch.squeeze() + self.config.gamma * (1 - done_batch.float()) * target_q_values
-        loss = nn.MSELoss()(q_values, target)
+        ##############################################################
+    
+        # 1. 当前 Q(s, a)
+        q_out = self.q_network(state_batch)
+        if action_batch.dim() == 1:
+            action_batch = action_batch.unsqueeze(1)
+        q_values = q_out.gather(1, action_batch).squeeze(1)
 
+        # 2. Double DQN target
+        with torch.no_grad():
+            # Online 选动作
+            next_actions = self.q_network(next_state_batch).argmax(dim=1, keepdim=True)
+            
+            # Target 估价值
+            target_q_values = self.target_network(next_state_batch).gather(1, next_actions).squeeze(1)
+            
+            target = (reward_batch.squeeze() + 
+                    self.config.gamma * (1.0 - done_batch.float().squeeze()) * target_q_values)
+
+        loss = nn.MSELoss()(q_values, target)
+        
         ##############################################################
         ######################## END YOUR CODE #######################
         return loss

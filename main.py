@@ -25,7 +25,7 @@ class config():
     replay_buffer_size = 100000
     learning_start = 100
     learning_freq = 1
-    target_update_freq = 20
+    target_update_freq = 50
     lr_begin = 0.001#0.01
     lr_end = 0.001#0.01
     lr_nsteps = 10000
@@ -73,13 +73,13 @@ def seed_all(seed, env=None):
 
 
 if __name__=='__main__':
-    env = gym.make('CartPole-v1')
-    # env = gym.make('Acrobot-v1')
+    #env = gym.make('CartPole-v1')
+    env = gym.make('Acrobot-v1')
     # env = EnvTest((100,))
     seed_all(0, env)
 
     # set double to True for Double DQN, False for DQN
-    double = False
+    double = True
     main(env, double)
     csv_plot(config.csv_dir, config.output_path)
 
