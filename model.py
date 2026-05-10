@@ -12,7 +12,13 @@ class QModel(nn.Module):
         You may find nn.Sequential helpful.
         '''
         super(QModel, self).__init__()
-        self.model = None
+        self.model = nn.Sequential(
+            nn.Linear(in_features, 256),
+            nn.ReLU(),
+            nn.Linear(256, 256),
+            nn.ReLU(),
+            nn.Linear(256, num_actions)
+        )
 
         ##############################################################
         ################ YOUR CODE HERE - 5-6 lines ##################

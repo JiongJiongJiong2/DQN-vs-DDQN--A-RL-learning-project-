@@ -33,7 +33,10 @@ class LinearSchedule(object):
         """
         ##############################################################
         ################ YOUR CODE HERE - 3-4 lines ##################
-
+        if t >= self.nsteps:
+            self.curr_val = self.val_end
+        else:
+            self.curr_val = self.val_begin + (self.val_end - self.val_begin) * (t / self.nsteps)
 
         ##############################################################
         ######################## END YOUR CODE ############## ########
@@ -80,7 +83,10 @@ class ExplorationSchedule(LinearSchedule):
         """
         ##############################################################
         ################ YOUR CODE HERE - 4-5 lines ##################
-
+        if np.random.random() < self.curr_val:
+            return self.env.action_space.sample()
+        else:
+            return np.argmax(q_vals)
 
         ##############################################################
         ######################## END YOUR CODE #######################

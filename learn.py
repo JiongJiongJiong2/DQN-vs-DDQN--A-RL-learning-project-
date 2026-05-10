@@ -68,7 +68,7 @@ class DQNTrainer(object):
         num_episodes = 0
         while t < self.config.num_timesteps:
             num_episodes += 1
-            state = self.env.reset()
+            state, _ = self.env.reset()
             done = False
             episode_reward = 0
             while not done and (t < self.config.num_timesteps):
@@ -86,7 +86,8 @@ class DQNTrainer(object):
                     self.exploration_schedule.update(t -
                                                      self.config.learning_start)
                 max_q_values.append(max(q_vals))
-                next_state, reward, done, info = self.env.step(action)
+                next_state, reward, terminated, truncated, info = self.env.step(action)
+                done = terminated or truncated
 
                 replay_buffer.push(torch.tensor(state),
                                    torch.tensor(action).unsqueeze(0),
@@ -228,7 +229,7 @@ class DQNTrainer(object):
 
         ##############################################################
         ################### YOUR CODE HERE - 1-2 lines ###############
-
+        self.target_network.load_state_dict(self.q_network.state_dict())
 
         ##############################################################
         ######################## END YOUR CODE #######################
@@ -269,7 +270,11 @@ class DQNTrainer(object):
         loss = None
         ##############################################################
         ################ YOUR CODE HERE - 5-6 lines ##################
-
+        q_values = self.q_network(state_batch).gather(1, action_batch).squeeze()
+        with torch.no_grad():
+            target_q_values = self.target_network(next_state_batch).max(dim=1)[0]
+            target = reward_batch.squeeze() + self.config.gamma * (1 - done_batch.float()) * target_q_values
+        loss = nn.MSELoss()(q_values, target)
 
         ##############################################################
         ######################## END YOUR CODE #######################
@@ -304,7 +309,12 @@ class DQNTrainer(object):
         loss = None
         ##############################################################
         ############### YOUR CODE HERE - 8-10 lines ##################
-
+        q_values = self.q_network(state_batch).gather(1, action_batch).squeeze()
+        with torch.no_grad():
+            next_actions = self.q_network(next_state_batch).argmax(dim=1, keepdim=True)
+            target_q_values = self.target_network(next_state_batch).gather(1, next_actions).squeeze()
+            target = reward_batch.squeeze() + self.config.gamma * (1 - done_batch.float()) * target_q_values
+        loss = nn.MSELoss()(q_values, target)
 
         ##############################################################
         ######################## END YOUR CODE #######################
@@ -316,14 +326,15 @@ class DQNTrainer(object):
         for ep in range(self.config.num_episodes_eval):
             episode_reward = 0
             done = False
-            state = self.env.reset()
+            state, _ = self.env.reset()
             while not done:
                 state_norm = torch.FloatTensor(state /
                                                self.config.high)
                 with torch.no_grad():
                     q_vals = self.q_network(state_norm)
                     action = np.argmax(q_vals.numpy())
-                next_state, reward, done, info = self.env.step(action)
+                next_state, reward, terminated, truncated, info = self.env.step(action)
+                done = terminated or truncated
                 next_state = None if done else next_state
                 state = next_state
                 episode_reward += reward
